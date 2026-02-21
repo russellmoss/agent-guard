@@ -21,6 +21,16 @@ export const DEFAULT_CONFIG = {
   architectureFile: 'docs/ARCHITECTURE.md',
   agentConfigFile: '.cursorrules',
   additionalAgentConfigs: [],  // e.g., ['CLAUDE.md', '.github/copilot-instructions.md']
+  autoFix: {
+    generators: true,           // Auto-run inventory generators at commit time
+    narrative: {
+      enabled: true,            // Attempt AI-powered narrative updates
+      engine: 'claude-code',    // Engine to use (only 'claude-code' supported)
+      review: false,            // Show diff + confirm before staging AI changes
+      narrativeTriggers: ['api-routes', 'prisma', 'env'],  // Category IDs that fire narrative updates
+      additionalNarrativeTargets: ['README.md'],  // EXTRA files beyond architectureFile
+    },
+  },
   scanPaths: {
     apiRoutes: 'src/app/api/',
     pageRoutes: 'src/app/',

@@ -72,6 +72,51 @@ export function generateConfigSchema() {
           'Additional AI agent config files to write standing instructions to. Enables multi-agent support (e.g., CLAUDE.md, .windsurfrules, .github/copilot-instructions.md).',
         default: [],
       },
+      autoFix: {
+        type: 'object',
+        description: 'Auto-fix behavior during pre-commit hook execution.',
+        properties: {
+          generators: {
+            type: 'boolean',
+            description: 'Automatically run inventory generators and stage output at commit time.',
+            default: true,
+          },
+          narrative: {
+            type: 'object',
+            description: 'AI-powered narrative documentation updates via Claude Code.',
+            properties: {
+              enabled: {
+                type: 'boolean',
+                description: 'Whether to attempt AI-powered narrative updates when Claude Code is available.',
+                default: true,
+              },
+              engine: {
+                type: 'string',
+                enum: ['claude-code'],
+                description: 'AI engine to use for narrative updates. Currently only claude-code is supported.',
+                default: 'claude-code',
+              },
+              review: {
+                type: 'boolean',
+                description: 'Show diff and ask for confirmation before staging AI-generated changes.',
+                default: false,
+              },
+              narrativeTriggers: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Category IDs that trigger narrative updates. Only these categories invoke Claude Code.',
+                default: ['api-routes', 'prisma', 'env'],
+              },
+              additionalNarrativeTargets: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Additional files for Claude Code to update beyond architectureFile. architectureFile is always included automatically.',
+                default: ['README.md'],
+              },
+            },
+          },
+        },
+      },
       scanPaths: {
         type: 'object',
         description: 'File and directory paths that inventory scripts scan.',

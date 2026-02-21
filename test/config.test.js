@@ -39,4 +39,18 @@ describe('DEFAULT_CONFIG', () => {
     assert.ok(Array.isArray(DEFAULT_CONFIG.additionalAgentConfigs));
     assert.equal(DEFAULT_CONFIG.additionalAgentConfigs.length, 0);
   });
+
+  it('has autoFix configuration with defaults', () => {
+    const af = DEFAULT_CONFIG.autoFix;
+    assert.ok(af, 'autoFix exists');
+    assert.equal(af.generators, true);
+    assert.equal(af.narrative.enabled, true);
+    assert.equal(af.narrative.engine, 'claude-code');
+    assert.equal(af.narrative.review, false);
+    assert.ok(Array.isArray(af.narrative.narrativeTriggers));
+    assert.equal(af.narrative.narrativeTriggers.length, 3);
+    assert.ok(Array.isArray(af.narrative.additionalNarrativeTargets));
+    assert.equal(af.narrative.additionalNarrativeTargets.length, 1);
+    assert.equal(af.narrative.additionalNarrativeTargets[0], 'README.md');
+  });
 });

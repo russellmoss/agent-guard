@@ -36,4 +36,14 @@ describe('generateConfigSchema', () => {
     assert.ok(catSchema.required.includes('patternType'));
     assert.ok(catSchema.required.includes('docTarget'));
   });
+
+  it('autoFix schema has correct structure', () => {
+    const af = schema.properties.autoFix;
+    assert.ok(af, 'autoFix in schema');
+    assert.equal(af.type, 'object');
+    assert.ok(af.properties.generators);
+    assert.ok(af.properties.narrative);
+    assert.ok(af.properties.narrative.properties.narrativeTriggers);
+    assert.ok(af.properties.narrative.properties.additionalNarrativeTargets);
+  });
 });
