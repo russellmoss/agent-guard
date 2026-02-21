@@ -1,0 +1,53 @@
+{
+  "name": "agent-guard",
+  "version": "0.1.0",
+  "description": "Self-healing documentation system for AI-assisted development. Prevents doc drift across commits, pushes, and weekly audits.",
+  "keywords": [
+    "documentation",
+    "ai-development",
+    "claude-code",
+    "cursor",
+    "devtools",
+    "code-quality",
+    "pre-commit",
+    "github-actions"
+  ],
+  "license": "MIT",
+  "author": "Russell Moss",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/savvywealth/agent-guard"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "agent-guard": "bin/agent-guard.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "templates/"
+  ],
+  "scripts": {
+    "lint": "eslint src/ bin/ --ext .js",
+    "test": "node --test src/**/*.test.js",
+    "prepublishOnly": "npm run lint && npm run test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "husky": "^9.1.7"
+  },
+  "devDependencies": {
+    "knip": "^5.0.0"
+  },
+  "peerDependencies": {
+    "knip": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "knip": {
+      "optional": true
+    }
+  }
+}
