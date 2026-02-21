@@ -87,6 +87,9 @@ npx agent-guard init
 # Generate initial documentation inventories
 npm run gen:all
 
+# Run full documentation sync (generators + AI narrative)
+npx agent-guard sync
+
 # Set up git hooks
 npm run prepare
 ```
@@ -132,9 +135,9 @@ docs/
 | Layer | Trigger | Action |
 |-------|---------|--------|
 | **Standing Instructions** | AI agent session | Updates docs alongside code changes |
-| **Generated Inventories** | `npm run gen:all` | Regenerates markdown from source files |
-| **Pre-commit Hook** | `git commit` | Blocks if generated docs are stale |
-| **CI/CD Audits** | Push / PR / Schedule | Fails pipeline if drift detected |
+| **Generated Inventories** | `npm run gen:all` or auto at commit | Regenerates markdown from source files |
+| **Pre-commit Hook** | `git commit` | Auto-runs generators + Claude Code narrative updates; falls back to prompt if unavailable |
+| **CI/CD Audits** | Push / PR / Schedule | Fails pipeline if drift detected; quality-checks AI-generated docs |
 
 ---
 

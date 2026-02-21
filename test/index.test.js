@@ -23,4 +23,8 @@ describe('Programmatic API (src/index.js)', () => {
   it('exports generateConfigSchema', () => {
     assert.equal(typeof agentGuard.generateConfigSchema, 'function');
   });
+
+  it('exports buildSyncPrompt', () => {
+    assert.equal(typeof agentGuard.buildSyncPrompt, 'function');
+  });
 });

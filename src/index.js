@@ -10,3 +10,5 @@ export { loadConfig, DEFAULT_CONFIG } from './utils/config.js';
 export { generateArchitectureSkeleton } from './generators/architecture.js';
 export { generateStandingInstructions } from './generators/standing-instructions.js';
 export { generateConfigSchema } from './generators/config-schema.js';
+// v0.3.0: sync prompt builder (ESM, directly importable)
+export { buildSyncPrompt } from './commands/sync.js';
