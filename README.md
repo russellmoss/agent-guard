@@ -175,8 +175,8 @@ The 4-layer approach was designed through iterative failure: Layer 1 alone catch
 ### Development Setup
 
 ```bash
-git clone https://github.com/yourusername/agent-guard
-cd agent-guard/packages/agent-guard
+git clone https://github.com/russellmoss/agent-guard
+cd agent-guard
 npm install
 npm link  # makes `agent-guard` available globally for testing
 ```

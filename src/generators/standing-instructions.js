@@ -1,9 +1,6 @@
 /**
  * Generates the standing instructions block that gets appended to the
- * user's AI agent config file (.cursorrules, .cursor/rules, etc.)
- *
- * SOURCE: Extracted from Savvy Dashboard `.cursorrules` lines 133-166.
- * All hardcoded Savvy paths and section numbers replaced with config-driven values.
+ * user's AI agent config file (.cursorrules, .cursor/rules, CLAUDE.md, etc.)
  */
 
 export function generateStandingInstructions(config) {

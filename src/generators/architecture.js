@@ -4,13 +4,6 @@
  * The section numbering and titles are designed to align with the pre-commit
  * hook's category definitions. When a user defines categories in their config,
  * each category's `docTarget` should reference one of these section titles.
- *
- * This is the KEY coupling point — the ARCHITECTURE sections must match the
- * pre-commit hook's `docTarget` strings. If the user adds custom categories,
- * they should also add matching sections to ARCHITECTURE.md.
- *
- * SOURCE: Derived from Savvy Dashboard's ARCHITECTURE.md structure, generalized
- * to work for any Next.js project using the App Router.
  */
 
 export function generateArchitectureSkeleton(config) {

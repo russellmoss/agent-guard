@@ -13,9 +13,6 @@
  *   - Silent when no doc-relevant files changed
  *   - ALWAYS exits 0 — this is a reminder, never a gate
  *
- * ORIGIN: Extracted from Savvy Dashboard pre-commit-doc-check.js (383 lines)
- * CHANGES: Replaced hardcoded CATEGORIES array and all Section references with config reads
- *
  * Usage: node scripts/pre-commit-doc-check.js [--verbose]
  */
 

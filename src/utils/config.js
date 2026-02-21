@@ -1,9 +1,8 @@
 /**
  * Config loader — reads and validates agent-docs.config.json
  *
- * IMPORTANT: This is the single source of truth for all configurable values.
+ * This is the single source of truth for all configurable values.
  * Every script, hook, and workflow reads paths, categories, and baselines from here.
- * No hardcoded Savvy-specific values should exist outside this config.
  */
 
 import { readFileSync, existsSync } from 'node:fs';

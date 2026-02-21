@@ -5,10 +5,6 @@
  *
  * Config-driven: reads scanPaths.prismaSchema and generatedDir from agent-docs.config.json
  * Run with: npm run gen:models
- *
- * ORIGIN: Extracted from Savvy Dashboard generate-model-inventory.cjs (132 lines)
- * CHANGES: Replaced hardcoded 'prisma/schema.prisma' and 'docs/_generated/' with config reads
- *          Added graceful skip when prismaSchema is null (user not using Prisma)
  */
 
 const fs = require('fs');
@@ -36,7 +32,7 @@ if (!fs.existsSync(SCHEMA_FILE)) {
   process.exit(0);
 }
 
-// ── PRESERVED LOGIC FROM SAVVY CODEBASE — DO NOT MODIFY WITHOUT READING ORIGINAL ──
+// ── Prisma schema parsing ──────────────────────────────────────────────────
 
 /** Parse all model blocks from a Prisma schema string */
 function parseModels(schemaContent) {

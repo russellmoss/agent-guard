@@ -6,9 +6,6 @@
  *
  * Config-driven: reads scanPaths.apiRoutes and generatedDir from agent-docs.config.json
  * Run with: npm run gen:api-routes
- *
- * ORIGIN: Extracted from Savvy Dashboard generate-api-inventory.cjs (117 lines)
- * CHANGES: Replaced hardcoded 'src/app/api/' and 'docs/_generated/' with config reads
  */
 
 const fs = require('fs');
@@ -22,7 +19,7 @@ const OUTPUT_FILE = path.join(
   'api-routes.md'
 );
 
-// ── PRESERVED LOGIC FROM SAVVY CODEBASE — DO NOT MODIFY WITHOUT READING ORIGINAL ──
+// ── Core scanning logic ────────────────────────────────────────────────────
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 

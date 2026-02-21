@@ -7,9 +7,6 @@
  * Config-driven: reads scanPaths.envFile, scanPaths.sourceDir, generatedDir, and envCategories
  * from agent-docs.config.json
  * Run with: npm run gen:env
- *
- * ORIGIN: Extracted from Savvy Dashboard generate-env-inventory.cjs (209 lines)
- * CHANGES: Replaced hardcoded paths and CATEGORY_RULES with config reads
  */
 
 const fs = require('fs');
@@ -40,7 +37,7 @@ function getCategory(name) {
   return 'Other';
 }
 
-// ── PRESERVED LOGIC FROM SAVVY CODEBASE — DO NOT MODIFY WITHOUT READING ORIGINAL ──
+// ── Core parsing logic ─────────────────────────────────────────────────────
 
 /** Parse env file and extract variables */
 function parseEnvFile(filePath) {
