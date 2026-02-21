@@ -76,52 +76,114 @@ function processWorkflowTemplate(templatePath, config) {
   return content;
 }
 
-const rl = createInterface({ input: process.stdin, output: process.stdout });
-const ask = (q) => new Promise((res) => rl.question(q, res));
+/** Auto-detect project name from package.json or directory name */
+function detectProjectName(projectRoot) {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8'));
+    // Strip scope from package name: @scope/name -> name
+    const name = (pkg.name || '').replace(/^@[^/]+\//, '');
+    if (name) return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  } catch { /* ignore */ }
+  // Fall back to directory name
+  const dirName = projectRoot.split(/[\\/]/).pop();
+  return dirName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/** Auto-detect Prisma by checking for schema file */
+function detectPrisma(projectRoot) {
+  return existsSync(resolve(projectRoot, 'prisma/schema.prisma'));
+}
+
+/** Auto-detect agent config file by checking common locations */
+function detectAgentConfig(projectRoot) {
+  const candidates = [
+    'CLAUDE.md',
+    '.cursorrules',
+    '.cursor/rules',
+    '.windsurfrules',
+    '.github/copilot-instructions.md',
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(resolve(projectRoot, candidate))) return candidate;
+  }
+  return '.cursorrules'; // default
+}
+
+/** Auto-detect env file */
+function detectEnvFile(projectRoot) {
+  if (existsSync(resolve(projectRoot, '.env.example'))) return '.env.example';
+  if (existsSync(resolve(projectRoot, '.env.local'))) return '.env.local';
+  if (existsSync(resolve(projectRoot, '.env'))) return '.env';
+  return '.env.example';
+}
 
 export default async function init({ flags }) {
   const projectRoot = process.cwd();
   const dryRun = flags['dry-run'] || false;
+  const nonInteractive = flags.yes || false;
 
-  console.log('\n  agent-guard — Setup Wizard\n');
+  let projectName, usePrisma, agentTool, docsDir, envFile, customCategories;
 
-  // ── 1. Gather project info ───────────────────────────────────────────────
+  if (nonInteractive) {
+    // Non-interactive mode — use flags or smart defaults
+    projectName = flags['project-name'] || detectProjectName(projectRoot);
+    usePrisma = flags.prisma || detectPrisma(projectRoot);
+    agentTool = flags['agent-config'] || detectAgentConfig(projectRoot);
+    docsDir = 'docs/';
+    envFile = detectEnvFile(projectRoot);
+    customCategories = [];
 
-  const projectName = await ask('  Project name: ');
-  const usePrisma = (await ask('  Using Prisma ORM? (y/n): ')).toLowerCase().startsWith('y');
-  const agentTool = await ask('  AI agent config file (.cursorrules / .cursor/rules / other): ') || '.cursorrules';
-  const docsDir = (await ask('  Docs directory (default: docs/): ')) || 'docs/';
-  const envFile = (await ask('  Env example file (default: .env.example): ')) || '.env.example';
+    console.log('\n  agent-guard — Non-interactive Setup\n');
+    console.log(`  Project name:    ${projectName}`);
+    console.log(`  Prisma:          ${usePrisma ? 'yes' : 'no'}`);
+    console.log(`  Agent config:    ${agentTool}`);
+    console.log(`  Docs dir:        ${docsDir}`);
+    console.log(`  Env file:        ${envFile}`);
+    console.log('');
+  } else {
+    console.log('\n  agent-guard — Setup Wizard\n');
 
-  // Ask about custom categories
-  console.log('\n  Default categories: API Routes, Page Routes, Environment Variables');
-  if (usePrisma) console.log('  + Prisma Schema (auto-added)');
-  const addCustom = (await ask('  Add custom categories? (y/n): ')).toLowerCase().startsWith('y');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const ask = (q) => new Promise((res) => rl.question(q, res));
 
-  const customCategories = [];
-  if (addCustom) {
-    console.log('\n  Enter custom categories (empty id to stop):');
-    while (true) {
-      const id = await ask('    Category id (e.g., permissions): ');
-      if (!id) break;
-      const name = await ask('    Display name (e.g., Permissions / Roles): ');
-      const filePattern = await ask('    File pattern (e.g., src/lib/permissions.ts): ');
-      const patternType = await ask('    Pattern type (exact / startsWith / regex): ') || 'exact';
-      const docTarget = await ask('    Doc target section name: ');
-      const genCommand = (await ask('    Gen command (or empty for none): ')) || null;
-      customCategories.push({
-        id,
-        name,
-        emoji: '📦',
-        filePattern,
-        patternType,
-        docTarget,
-        genCommand,
-      });
+    // ── 1. Gather project info ───────────────────────────────────────────────
+
+    projectName = await ask('  Project name: ');
+    usePrisma = (await ask('  Using Prisma ORM? (y/n): ')).toLowerCase().startsWith('y');
+    agentTool = await ask('  AI agent config file (.cursorrules / .cursor/rules / other): ') || '.cursorrules';
+    docsDir = (await ask('  Docs directory (default: docs/): ')) || 'docs/';
+    envFile = (await ask('  Env example file (default: .env.example): ')) || '.env.example';
+
+    // Ask about custom categories
+    console.log('\n  Default categories: API Routes, Page Routes, Environment Variables');
+    if (usePrisma) console.log('  + Prisma Schema (auto-added)');
+    const addCustom = (await ask('  Add custom categories? (y/n): ')).toLowerCase().startsWith('y');
+
+    customCategories = [];
+    if (addCustom) {
+      console.log('\n  Enter custom categories (empty id to stop):');
+      while (true) {
+        const id = await ask('    Category id (e.g., permissions): ');
+        if (!id) break;
+        const name = await ask('    Display name (e.g., Permissions / Roles): ');
+        const filePattern = await ask('    File pattern (e.g., src/lib/permissions.ts): ');
+        const patternType = await ask('    Pattern type (exact / startsWith / regex): ') || 'exact';
+        const docTarget = await ask('    Doc target section name: ');
+        const genCommand = (await ask('    Gen command (or empty for none): ')) || null;
+        customCategories.push({
+          id,
+          name,
+          emoji: '📦',
+          filePattern,
+          patternType,
+          docTarget,
+          genCommand,
+        });
+      }
     }
-  }
 
-  rl.close();
+    rl.close();
+  }
 
   // ── 2. Build config ──────────────────────────────────────────────────────
 

@@ -21,6 +21,10 @@ const { values, positionals } = parseArgs({
     verbose: { type: 'boolean', short: 'v', default: false },
     config: { type: 'string', short: 'c', default: 'agent-docs.config.json' },
     'dry-run': { type: 'boolean', default: false },
+    yes: { type: 'boolean', short: 'y', default: false },
+    'project-name': { type: 'string', default: '' },
+    prisma: { type: 'boolean', default: false },
+    'agent-config': { type: 'string', default: '' },
   },
 });
 
@@ -42,6 +46,10 @@ if (values.help || !command) {
     -c, --config  Path to config file (default: agent-docs.config.json)
     -v, --verbose Verbose output
     --dry-run     Show what would be created without writing files
+    -y, --yes     Accept defaults (non-interactive)
+    --project-name  Project name (used with --yes)
+    --prisma        Enable Prisma support (used with --yes)
+    --agent-config  Agent config file path (used with --yes)
     -h, --help    Show this help message
   `);
   process.exit(0);
