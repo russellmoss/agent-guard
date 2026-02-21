@@ -17,7 +17,13 @@
  */
 
 const { execSync } = require('child_process');
-const { loadConfig } = require('./_config-reader.cjs');
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const { loadConfig, PROJECT_ROOT } = require('./_config-reader.cjs');
+const { detectEngine, invokeClaudeCode } = require('./_claude-engine.cjs');
+const { printAutoFixSummary, printPromptFallback } = require('./_terminal-output.cjs');
+const { logEntry } = require('./_audit-log.cjs');
 
 const verbose = process.argv.includes('--verbose');
 const config = loadConfig();
@@ -147,9 +153,52 @@ function buildPrompt(matches) {
   return lines.join('\n');
 }
 
+/**
+ * Build a prompt specifically for Claude Code narrative updates.
+ * Targets only narrativeTargets files, not agent configs.
+ */
+function buildNarrativePrompt(matches, cfg) {
+  const archFile = cfg.architectureFile || 'docs/ARCHITECTURE.md';
+  const targets = [
+    archFile,
+    ...(cfg.autoFix?.narrative?.additionalNarrativeTargets || ['README.md']),
+  ];
+
+  const lines = [
+    'The following code files were changed. Update the documentation to reflect these changes.',
+    '',
+    `Files you MUST update: ${targets.join(', ')}`,
+    '',
+  ];
+
+  for (const cat of CATEGORIES) {
+    if (!matches[cat.id]) continue;
+    const files = matches[cat.id];
+    lines.push(`Changed ${cat.name} (${files.length} file${files.length !== 1 ? 's' : ''}):`);
+    const show = files.slice(0, 15);
+    for (const f of show) {
+      lines.push(`  - ${f}`);
+    }
+    if (files.length > 15) {
+      lines.push(`  ... and ${files.length - 15} more`);
+    }
+    lines.push('');
+  }
+
+  lines.push('RULES:');
+  lines.push('- Read each changed source file BEFORE updating docs');
+  lines.push(`- Match the existing format and section structure in ${archFile}`);
+  lines.push('- Do NOT modify any source code files');
+  lines.push('- Do NOT modify .cursorrules, CLAUDE.md, or any agent config files');
+  lines.push('- Do NOT create new files — only update existing ones');
+  lines.push(`- Only update these files: ${targets.join(', ')}`);
+
+  return lines.join('\n');
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-function main() {
+async function main() {
   const stagedFiles = getStagedFiles();
 
   if (verbose) {
@@ -196,59 +245,201 @@ function main() {
     return;
   }
 
-  // Doc-relevant changes WITHOUT doc updates — warn + generate prompt
-  stderr('\n');
-  stderr('⚠️  Documentation may need updating\n');
-  stderr('━'.repeat(34) + '\n');
-  stderr('\n');
+  // ── Doc-relevant changes WITHOUT doc updates — auto-fix mode ──
 
-  // List changed categories
-  stderr('Changed:\n');
-  for (const cat of CATEGORIES) {
-    if (!matches[cat.id]) continue;
-    const files = matches[cat.id];
-    const count = `(${files.length} file${files.length !== 1 ? 's' : ''})`;
-    stderr(`  ${cat.emoji}  ${cat.name} ${count}:\n`);
-    const show = files.slice(0, 10);
-    for (const f of show) {
-      stderr(`     - ${f}\n`);
-    }
-    if (files.length > 10) {
-      stderr(`     ... and ${files.length - 10} more\n`);
-    }
-  }
+  const autoFixResults = [];
+  let engineUsed = null;
+  let engineError = null;
+  let autoFixRan = false;
 
-  // Gen commands to run
-  const genCommands = [];
-  for (const cat of CATEGORIES) {
-    if (matches[cat.id] && cat.genCommand && !genCommands.includes(cat.genCommand)) {
-      genCommands.push(cat.genCommand);
+  // Step 1: Auto-run generators
+  if (config.autoFix?.generators !== false) {
+    const genCommands = [];
+    for (const cat of CATEGORIES) {
+      if (matches[cat.id] && cat.genCommand && !genCommands.includes(cat.genCommand)) {
+        genCommands.push(cat.genCommand);
+      }
     }
-  }
-  if (genCommands.length > 0) {
-    stderr('\nRun these inventory commands:\n');
+
     for (const cmd of genCommands) {
-      stderr(`  ${cmd}\n`);
+      try {
+        execSync(cmd, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+        autoFixResults.push({ file: cmd, action: 'regenerated' });
+        autoFixRan = true;
+      } catch (e) {
+        if (verbose) stderr(`  Generator failed: ${cmd}: ${e.message}\n`);
+      }
+    }
+
+    // Stage generated files
+    if (autoFixRan) {
+      try {
+        const genDir = config.generatedDir || 'docs/_generated/';
+        execSync(`git add ${genDir}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+      } catch {
+        // Non-fatal — generated files may not have changed
+      }
     }
   }
 
-  // Claude Code prompt
-  stderr('\n');
-  stderr('┌' + '─'.repeat(45) + '┐\n');
-  stderr('│  Claude Code Prompt (copy-paste this):       │\n');
-  stderr('└' + '─'.repeat(45) + '┘\n');
-  stderr('\n');
-  stderr(buildPrompt(matches));
-  stderr('\n\n');
+  // Step 2: Narrative update via Claude Code
+  const triggeredIds = Object.keys(matches);
+  const narrativeTriggers = config.autoFix?.narrative?.narrativeTriggers || ['api-routes', 'prisma', 'env'];
+  const hasNarrativeTrigger = triggeredIds.some(id => narrativeTriggers.includes(id));
+
+  if (hasNarrativeTrigger && config.autoFix?.narrative?.enabled !== false) {
+    const engine = detectEngine();
+
+    if (engine) {
+      engineUsed = engine;
+      const prompt = buildNarrativePrompt(matches, config);
+      const result = invokeClaudeCode(prompt, PROJECT_ROOT, (msg) => stderr(`  ${msg}\n`));
+
+      if (result.success) {
+        // Compute narrative targets
+        const archFile = config.architectureFile || 'docs/ARCHITECTURE.md';
+        const targets = [
+          archFile,
+          ...(config.autoFix?.narrative?.additionalNarrativeTargets || ['README.md']),
+        ];
+
+        // Review mode
+        if (config.autoFix?.narrative?.review === true) {
+          // Check if terminal is available
+          let canInteract = false;
+          try {
+            const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
+            const fd = fs.openSync(ttyPath, 'r');
+            fs.closeSync(fd);
+            canInteract = true;
+          } catch {
+            // No TTY available (CI, piped input) — auto-accept
+          }
+
+          if (canInteract) {
+            stderr('\n📋 Review AI doc changes:\n');
+            for (const target of targets) {
+              try {
+                const diff = execSync(`git diff -- ${target}`, {
+                  cwd: PROJECT_ROOT,
+                  encoding: 'utf8',
+                  stdio: ['pipe', 'pipe', 'pipe'],
+                });
+                if (diff.trim()) {
+                  stderr(`\n--- ${target} ---\n`);
+                  stderr(diff);
+                }
+              } catch {
+                // File may not exist or no changes
+              }
+            }
+
+            // Read from /dev/tty, not stdin (git hooks have stdin as /dev/null)
+            const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
+            const ttyFd = fs.openSync(ttyPath, 'r');
+            const ttyInput = fs.createReadStream(null, { fd: ttyFd });
+            const rl = readline.createInterface({ input: ttyInput, output: process.stderr });
+
+            const answer = await new Promise((resolve) => {
+              rl.question('  Stage these changes? (y/n): ', resolve);
+            });
+            rl.close();
+            ttyInput.destroy();
+
+            if (answer.toLowerCase() !== 'y') {
+              // Discard changes
+              for (const target of targets) {
+                try { execSync(`git checkout -- ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
+              }
+              stderr('  AI changes discarded.\n');
+              engineError = 'Changes rejected by review.';
+            }
+          }
+        }
+
+        // Stage narrative targets (unless rejected by review)
+        if (!engineError) {
+          for (const target of targets) {
+            try {
+              execSync(`git add ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+              autoFixResults.push({ file: target, action: 'narrative updated by Claude Code' });
+            } catch {
+              // File may not exist
+            }
+          }
+          autoFixRan = true;
+
+          // Write signal file for prepare-commit-msg hook
+          const signalDir = path.join(PROJECT_ROOT, '.agent-guard');
+          if (!fs.existsSync(signalDir)) fs.mkdirSync(signalDir, { recursive: true });
+          fs.writeFileSync(path.join(signalDir, '.auto-fix-ran'), '', 'utf8');
+        }
+      } else {
+        engineError = result.error;
+      }
+    } else {
+      engineError = 'Claude Code not found on PATH. Install: npm i -g @anthropic-ai/claude-code';
+    }
+  }
+
+  // Step 3: Output results
+  if (autoFixResults.length > 0 && !engineError) {
+    printAutoFixSummary(autoFixResults);
+  } else {
+    // Fall back to prompt mode (existing behavior)
+    const reason = engineError || null;
+
+    stderr('\n');
+    stderr('⚠️  Documentation may need updating\n');
+    stderr('━'.repeat(34) + '\n');
+    stderr('\n');
+
+    // List changed categories
+    stderr('Changed:\n');
+    for (const cat of CATEGORIES) {
+      if (!matches[cat.id]) continue;
+      const files = matches[cat.id];
+      const count = `(${files.length} file${files.length !== 1 ? 's' : ''})`;
+      stderr(`  ${cat.emoji}  ${cat.name} ${count}:\n`);
+      const show = files.slice(0, 10);
+      for (const f of show) {
+        stderr(`     - ${f}\n`);
+      }
+      if (files.length > 10) {
+        stderr(`     ... and ${files.length - 10} more\n`);
+      }
+    }
+
+    // Gen commands to run
+    const genCommands = [];
+    for (const cat of CATEGORIES) {
+      if (matches[cat.id] && cat.genCommand && !genCommands.includes(cat.genCommand)) {
+        genCommands.push(cat.genCommand);
+      }
+    }
+    if (genCommands.length > 0) {
+      stderr('\nRun these inventory commands:\n');
+      for (const cmd of genCommands) {
+        stderr(`  ${cmd}\n`);
+      }
+    }
+
+    printPromptFallback(reason, buildPrompt(matches));
+  }
+
+  // Step 4: Audit log
+  logEntry(PROJECT_ROOT, {
+    mode: autoFixRan ? 'auto-fix' : (Object.keys(matches).length > 0 ? 'prompt' : 'skip'),
+    engine: engineUsed,
+    generatorResults: autoFixResults.filter(r => r.action === 'regenerated'),
+    narrativeResults: autoFixResults.filter(r => r.action.includes('narrative')),
+  });
 }
 
-try {
-  main();
-} catch (e) {
-  // Never crash — never block a commit
+main().catch((e) => {
   if (verbose) {
     process.stderr.write(`[pre-commit-doc-check] Unexpected error: ${e.message}\n`);
   }
-}
-
-process.exit(0);
+}).finally(() => {
+  process.exit(0);
+});
