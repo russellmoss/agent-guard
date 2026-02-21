@@ -27,6 +27,22 @@ export function generateConfigSchema() {
         description: 'Display name of your project. Used in generated ARCHITECTURE.md and issue titles.',
         default: 'My Project',
       },
+      techStack: {
+        type: 'object',
+        description: 'Technology stack metadata used in generated ARCHITECTURE.md.',
+        properties: {
+          framework: {
+            type: 'string',
+            description: 'Primary framework name and version.',
+            default: 'Next.js 14 (App Router)',
+          },
+          language: {
+            type: 'string',
+            description: 'Primary language.',
+            default: 'TypeScript',
+          },
+        },
+      },
       docsDir: {
         type: 'string',
         description: 'Path to your documentation directory, relative to project root.',

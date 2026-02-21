@@ -25,6 +25,7 @@ import { execSync } from 'node:child_process';
 import { DEFAULT_CONFIG } from '../utils/config.js';
 import { generateArchitectureSkeleton } from '../generators/architecture.js';
 import { generateStandingInstructions } from '../generators/standing-instructions.js';
+import { PRESETS } from '../utils/presets.js';
 
 // Get the package's templates directory
 const __filename = fileURLToPath(import.meta.url);
@@ -117,12 +118,25 @@ function detectEnvFile(projectRoot) {
   return '.env.example';
 }
 
+/** Auto-detect framework from package.json dependencies */
+function detectFramework(projectRoot) {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8'));
+    const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+    if (allDeps['next']) return 'nextjs';
+    if (allDeps['express']) return 'express';
+    if (allDeps['fastify']) return 'express'; // close enough defaults
+    if (allDeps['hono']) return 'express';
+  } catch { /* ignore */ }
+  return 'generic';
+}
+
 export default async function init({ flags }) {
   const projectRoot = process.cwd();
   const dryRun = flags['dry-run'] || false;
   const nonInteractive = flags.yes || false;
 
-  let projectName, usePrisma, agentTool, docsDir, envFile, customCategories, additionalConfigs;
+  let projectName, usePrisma, agentTool, docsDir, envFile, customCategories, additionalConfigs, presetKey, preset;
 
   if (nonInteractive) {
     // Non-interactive mode — use flags or smart defaults
@@ -133,9 +147,12 @@ export default async function init({ flags }) {
     envFile = detectEnvFile(projectRoot);
     customCategories = [];
     additionalConfigs = [];
+    presetKey = detectFramework(projectRoot);
+    preset = PRESETS[presetKey];
 
     console.log('\n  agent-guard — Non-interactive Setup\n');
     console.log(`  Project name:    ${projectName}`);
+    console.log(`  Framework:       ${preset.label}`);
     console.log(`  Prisma:          ${usePrisma ? 'yes' : 'no'}`);
     console.log(`  Agent config:    ${agentTool}`);
     console.log(`  Docs dir:        ${docsDir}`);
@@ -151,6 +168,18 @@ export default async function init({ flags }) {
 
     projectName = await ask('  Project name: ');
     usePrisma = (await ask('  Using Prisma ORM? (y/n): ')).toLowerCase().startsWith('y');
+
+    // Ask about framework preset
+    console.log('\n  Framework presets:');
+    const presetList = Object.entries(PRESETS);
+    for (let i = 0; i < presetList.length; i++) {
+      console.log(`    ${i + 1}. ${presetList[i][1].label}`);
+    }
+    const presetChoice = await ask(`  Choose preset (1-${presetList.length}, default 1): `) || '1';
+    presetKey = presetList[parseInt(presetChoice, 10) - 1]?.[0] || 'nextjs';
+    preset = PRESETS[presetKey];
+    console.log(`  Using ${preset.label} preset\n`);
+
     agentTool = await ask('  AI agent config file (.cursorrules / .cursor/rules / other): ') || '.cursorrules';
 
     // Ask about additional agent config files
@@ -204,12 +233,17 @@ export default async function init({ flags }) {
 
   const config = structuredClone(DEFAULT_CONFIG);
   config.projectName = projectName;
+  config.techStack = preset.techStack;
   config.docsDir = docsDir;
   config.generatedDir = join(docsDir, '_generated/');
   config.architectureFile = join(docsDir, 'ARCHITECTURE.md');
   config.agentConfigFile = agentTool;
   config.additionalAgentConfigs = additionalConfigs;
+  config.scanPaths = { ...config.scanPaths, ...preset.scanPaths };
   config.scanPaths.envFile = envFile;
+  config.categories = [...preset.categories];
+  config.envCategories = preset.envCategories;
+  config.workflows.docsAudit.triggerPaths = [...preset.workflowTriggerPaths];
 
   if (usePrisma) {
     config.scanPaths.prismaSchema = 'prisma/schema.prisma';

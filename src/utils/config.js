@@ -12,6 +12,10 @@ import { resolve, dirname } from 'node:path';
 export const DEFAULT_CONFIG = {
   $schema: './agent-docs.schema.json',
   projectName: 'My Project',
+  techStack: {
+    framework: 'Next.js 14 (App Router)',
+    language: 'TypeScript',
+  },
   docsDir: 'docs/',
   generatedDir: 'docs/_generated/',
   architectureFile: 'docs/ARCHITECTURE.md',

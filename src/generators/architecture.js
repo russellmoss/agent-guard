@@ -15,6 +15,23 @@ export function generateArchitectureSkeleton(config) {
   const sections = [];
   let sectionNum = 1;
 
+  // Directory structure adapts to framework
+  const dirStructure = config.techStack?.framework?.includes('Next.js')
+    ? [
+        'src/',
+        '├── app/            # Next.js App Router pages and API routes',
+        '├── components/     # Shared React components',
+        '├── lib/            # Core business logic and utilities',
+        '└── config/         # Configuration constants',
+      ]
+    : [
+        'src/',
+        '├── routes/         # Route handlers',
+        '├── lib/            # Core business logic and utilities',
+        '├── middleware/     # Middleware functions',
+        '└── config/         # Configuration constants',
+      ];
+
   // Section 1 is always the overview
   sections.push({
     num: sectionNum++,
@@ -23,19 +40,15 @@ export function generateArchitectureSkeleton(config) {
       `${projectName} is a [describe your application here].`,
       '',
       '### Tech Stack',
-      '- **Framework**: Next.js 14 (App Router)',
-      '- **Language**: TypeScript',
+      `- **Framework**: ${config.techStack?.framework || 'Next.js 14 (App Router)'}`,
+      `- **Language**: ${config.techStack?.language || 'TypeScript'}`,
       '- **Styling**: [Tailwind CSS / CSS Modules / etc.]',
       usePrisma ? '- **ORM**: Prisma' : '',
       '- **Deployment**: [Vercel / AWS / etc.]',
       '',
       '### Repository Structure',
       '```',
-      'src/',
-      '├── app/            # Next.js App Router pages and API routes',
-      '├── components/     # Shared React components',
-      '├── lib/            # Core business logic and utilities',
-      '└── config/         # Configuration constants',
+      ...dirStructure,
       '```',
     ].filter(Boolean),
   });
