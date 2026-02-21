@@ -41,6 +41,7 @@ if (values.help || !command) {
     detect        Auto-detect baselines and update config
     gen           Run all inventory generators
     check         Run pre-commit documentation check
+    sync          Run full documentation sync (generators + AI narrative)
 
   Options:
     -c, --config  Path to config file (default: agent-docs.config.json)
@@ -68,7 +69,7 @@ if (!noConfigCommands.includes(command) && !existsSync(configPath)) {
 }
 
 // Whitelist of valid commands (sanitize user input before dynamic import)
-const VALID_COMMANDS = ['init', 'detect', 'gen', 'check'];
+const VALID_COMMANDS = ['init', 'detect', 'gen', 'check', 'sync'];
 
 if (!VALID_COMMANDS.includes(command)) {
   console.error(`\n  ✗ Unknown command: "${command}"`);
