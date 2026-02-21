@@ -122,7 +122,7 @@ export default async function init({ flags }) {
   const dryRun = flags['dry-run'] || false;
   const nonInteractive = flags.yes || false;
 
-  let projectName, usePrisma, agentTool, docsDir, envFile, customCategories;
+  let projectName, usePrisma, agentTool, docsDir, envFile, customCategories, additionalConfigs;
 
   if (nonInteractive) {
     // Non-interactive mode — use flags or smart defaults
@@ -132,6 +132,7 @@ export default async function init({ flags }) {
     docsDir = 'docs/';
     envFile = detectEnvFile(projectRoot);
     customCategories = [];
+    additionalConfigs = [];
 
     console.log('\n  agent-guard — Non-interactive Setup\n');
     console.log(`  Project name:    ${projectName}`);
@@ -151,6 +152,20 @@ export default async function init({ flags }) {
     projectName = await ask('  Project name: ');
     usePrisma = (await ask('  Using Prisma ORM? (y/n): ')).toLowerCase().startsWith('y');
     agentTool = await ask('  AI agent config file (.cursorrules / .cursor/rules / other): ') || '.cursorrules';
+
+    // Ask about additional agent config files
+    const addMore = (await ask('  Write instructions to additional agent config files? (y/n): ')).toLowerCase().startsWith('y');
+    additionalConfigs = [];
+    if (addMore) {
+      console.log('  Common options: CLAUDE.md, .windsurfrules, .github/copilot-instructions.md');
+      console.log('  Enter paths (empty to stop):');
+      while (true) {
+        const extra = await ask('    Additional config file: ');
+        if (!extra) break;
+        additionalConfigs.push(extra);
+      }
+    }
+
     docsDir = (await ask('  Docs directory (default: docs/): ')) || 'docs/';
     envFile = (await ask('  Env example file (default: .env.example): ')) || '.env.example';
 
@@ -193,6 +208,7 @@ export default async function init({ flags }) {
   config.generatedDir = join(docsDir, '_generated/');
   config.architectureFile = join(docsDir, 'ARCHITECTURE.md');
   config.agentConfigFile = agentTool;
+  config.additionalAgentConfigs = additionalConfigs;
   config.scanPaths.envFile = envFile;
 
   if (usePrisma) {
@@ -343,6 +359,36 @@ export default async function init({ flags }) {
       content: standingInstructions + '\n',
       label: config.agentConfigFile,
     });
+  }
+
+  // Additional agent config files
+  for (const additionalConfig of config.additionalAgentConfigs || []) {
+    const additionalPath = resolve(projectRoot, additionalConfig);
+    if (existsSync(additionalPath)) {
+      const existingContent = readFileSync(additionalPath, 'utf8');
+      const MARKER_START = '## Documentation Maintenance — Standing Instructions';
+      const markerIndex = existingContent.indexOf(MARKER_START);
+      if (markerIndex !== -1) {
+        filesToCreate.push({
+          path: additionalPath,
+          content: existingContent.slice(0, markerIndex).trimEnd() + '\n\n' + standingInstructions + '\n',
+          label: `${additionalConfig} (replaced standing instructions)`,
+        });
+      } else {
+        filesToCreate.push({
+          path: additionalPath,
+          content: null,
+          append: '\n\n' + standingInstructions,
+          label: `${additionalConfig} (appended standing instructions)`,
+        });
+      }
+    } else {
+      filesToCreate.push({
+        path: additionalPath,
+        content: standingInstructions + '\n',
+        label: additionalConfig,
+      });
+    }
   }
 
   // ── 4. Dry run or write ──────────────────────────────────────────────────

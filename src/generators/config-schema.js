@@ -49,6 +49,13 @@ export function generateConfigSchema() {
           'Path to your AI agent configuration file (.cursorrules, .cursor/rules, etc). Standing instructions are appended here.',
         default: '.cursorrules',
       },
+      additionalAgentConfigs: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Additional AI agent config files to write standing instructions to. Enables multi-agent support (e.g., CLAUDE.md, .windsurfrules, .github/copilot-instructions.md).',
+        default: [],
+      },
       scanPaths: {
         type: 'object',
         description: 'File and directory paths that inventory scripts scan.',

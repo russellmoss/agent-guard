@@ -16,6 +16,7 @@ export const DEFAULT_CONFIG = {
   generatedDir: 'docs/_generated/',
   architectureFile: 'docs/ARCHITECTURE.md',
   agentConfigFile: '.cursorrules',
+  additionalAgentConfigs: [],  // e.g., ['CLAUDE.md', '.github/copilot-instructions.md']
   scanPaths: {
     apiRoutes: 'src/app/api/',
     pageRoutes: 'src/app/',
