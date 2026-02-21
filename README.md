@@ -45,6 +45,8 @@ Two GitHub Actions workflows:
 
 ## Quick Start
 
+> **Framework support**: agent-guard ships with presets for Next.js (App Router), Express.js, and generic Node.js projects. The setup wizard auto-detects your framework or lets you choose.
+
 ### 1. Initialize
 
 ```bash
@@ -91,6 +93,18 @@ git commit -m "feat: add agent-guard self-healing documentation system"
 
 The pre-commit hook fires on this very commit, confirming it's wired up correctly.
 
+### Non-Interactive Setup
+
+For CI, scripting, or AI agent-driven installation:
+
+```bash
+# Auto-detect everything
+npx @mossrussell/agent-guard init --yes
+
+# Override specific values
+npx @mossrussell/agent-guard init --yes --project-name "My API" --prisma --agent-config CLAUDE.md
+```
+
 ---
 
 ## Configuration Reference
@@ -125,6 +139,26 @@ Add project-specific monitoring categories to the `categories` array:
 ```
 
 Pattern types: `exact` (full path match), `startsWith` (prefix), `regex` (JavaScript RegExp).
+
+### Framework Presets
+
+agent-guard includes built-in category presets:
+
+| Preset | Best For | Key Categories |
+|--------|----------|----------------|
+| `nextjs` | Next.js App Router projects | API routes, page routes, env vars |
+| `express` | Express/Fastify/Hono APIs | Route files, middleware, env vars |
+| `generic` | Any Node.js project | Source files, env vars |
+
+The wizard auto-detects your framework from `package.json`. Override with manual preset selection in interactive mode.
+
+### Additional Config Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `additionalAgentConfigs` | array | Additional AI config files for standing instructions |
+| `techStack.framework` | string | Framework name shown in ARCHITECTURE.md |
+| `techStack.language` | string | Language shown in ARCHITECTURE.md |
 
 ---
 

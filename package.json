@@ -1,6 +1,6 @@
 {
   "name": "@mossrussell/agent-guard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-healing documentation system for AI-assisted development. Prevents doc drift across commits, pushes, and weekly audits.",
   "keywords": [
     "documentation",
