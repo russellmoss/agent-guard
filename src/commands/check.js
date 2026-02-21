@@ -5,12 +5,12 @@
 
 import { execSync } from 'node:child_process';
 
-export default async function check({ configPath, flags }) {
+export default async function check({ configPath: _configPath, flags }) {
   const args = [];
   if (flags.verbose) args.push('--verbose');
 
   try {
-    execSync(`node scripts/pre-commit-doc-check.js ${args.join(' ')}`, {
+    execSync(`node scripts/pre-commit-doc-check.cjs ${args.join(' ')}`, {
       encoding: 'utf8',
       cwd: process.cwd(),
       stdio: 'inherit',

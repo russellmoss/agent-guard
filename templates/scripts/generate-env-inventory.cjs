@@ -96,7 +96,7 @@ function getAllSourceFiles(dir) {
   let items;
   try {
     items = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (e) {
+  } catch { /* skip unreadable */
     return results;
   }
   for (const item of items) {

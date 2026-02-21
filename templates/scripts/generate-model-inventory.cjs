@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, resolvePath, PROJECT_ROOT } = require('./_config-reader.cjs');
+const { loadConfig, resolvePath } = require('./_config-reader.cjs');
 
 const config = loadConfig();
 const schemaPath = config.scanPaths?.prismaSchema;

@@ -17,8 +17,7 @@
  */
 
 const { execSync } = require('child_process');
-const path = require('path');
-const { loadConfig, PROJECT_ROOT } = require('./_config-reader.cjs');
+const { loadConfig } = require('./_config-reader.cjs');
 
 const verbose = process.argv.includes('--verbose');
 const config = loadConfig();
@@ -63,24 +62,9 @@ function getStagedFiles() {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     return out.trim().split('\n').filter(f => f.length > 0);
-  } catch (e) {
-    // Not in a git repo, or no commits yet, or git not found
+  } catch { /* git not available or not in repo */
     return [];
   }
-}
-
-/** Convert kebab-case or snake_case to Title Case. */
-function toTitleCase(str) {
-  return str.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-/** Extract the feature area from an API route path.
- *  e.g. "src/app/api/gc-hub/advisors/route.ts" → "gc-hub"
- *       "src/app/api/dashboard-requests/[id]/route.ts" → "dashboard-requests"
- */
-function extractApiFeature(filePath) {
-  const m = filePath.match(/^src\/app\/api\/([^/]+)/);
-  return m ? m[1] : 'unknown';
 }
 
 /** Return true if a staged file is a documentation file. */
