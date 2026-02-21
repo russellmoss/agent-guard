@@ -446,27 +446,35 @@ export default async function init({ flags }) {
     return;
   }
 
+  const forceOverwrite = flags.force || false;
+
   for (const f of filesToCreate) {
     mkdirSync(dirname(f.path), { recursive: true });
+
     if (f.append) {
+      // Append mode — always runs
       const existing = existsSync(f.path) ? readFileSync(f.path, 'utf8') : '';
       writeFileSync(f.path, existing + f.append, 'utf8');
+      console.log(`  Appended: ${f.label}`);
     } else if (f.copyFrom) {
-      // Copy from template
-      if (existsSync(f.path)) {
+      const existed = existsSync(f.path);
+      if (existed && !forceOverwrite) {
         console.log(`  Skipped (already exists): ${f.label}`);
         continue;
       }
       copyFileSync(f.copyFrom, f.path);
+      console.log(`  ${existed ? 'Updated' : 'Created'}: ${f.label}`);
     } else {
-      // Don't overwrite existing files unless it's the config
-      if (existsSync(f.path) && f.label !== 'agent-docs.config.json') {
+      // Config is always overwritten; other generated files respect --force
+      const isConfig = f.label === 'agent-docs.config.json' || f.label === 'agent-docs.schema.json';
+      const existed = existsSync(f.path);
+      if (existed && !isConfig && !forceOverwrite) {
         console.log(`  Skipped (already exists): ${f.label}`);
         continue;
       }
       writeFileSync(f.path, f.content, 'utf8');
+      console.log(`  ${existed ? 'Updated' : 'Created'}: ${f.label}`);
     }
-    console.log(`  Created: ${f.label}`);
   }
 
   // ── 5. Update package.json — add npm scripts ────────────────────────────

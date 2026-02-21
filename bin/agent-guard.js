@@ -25,6 +25,7 @@ const { values, positionals } = parseArgs({
     'project-name': { type: 'string', default: '' },
     prisma: { type: 'boolean', default: false },
     'agent-config': { type: 'string', default: '' },
+    force: { type: 'boolean', default: false },
   },
 });
 
@@ -51,6 +52,7 @@ if (values.help || !command) {
     --project-name  Project name (used with --yes)
     --prisma        Enable Prisma support (used with --yes)
     --agent-config  Agent config file path (used with --yes)
+    --force       Overwrite existing template scripts (for upgrades)
     -h, --help    Show this help message
   `);
   process.exit(0);
