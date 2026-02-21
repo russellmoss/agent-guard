@@ -30,21 +30,27 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "prepublishOnly": "npm run lint && npm test",
     "prepare": "husky"
   },
   "engines": {
     "node": ">=20.0.0"
   },
-  "dependencies": {
-    "husky": "^9.1.7"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "eslint": "^9.0.0",
+    "husky": "^9.0.0",
     "knip": "^5.0.0"
   },
   "peerDependencies": {
+    "husky": ">=9.0.0",
     "knip": ">=5.0.0"
   },
   "peerDependenciesMeta": {
+    "husky": {
+      "optional": true
+    },
     "knip": {
       "optional": true
     }
