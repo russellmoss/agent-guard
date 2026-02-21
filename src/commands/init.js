@@ -31,6 +31,51 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const TEMPLATES_DIR = resolve(__dirname, '../../templates');
 
+/** Simple mustache-style template replacement for YAML workflows */
+function processWorkflowTemplate(templatePath, config) {
+  let content = readFileSync(templatePath, 'utf8');
+
+  // Apply docs-audit trigger paths
+  if (templatePath.endsWith('docs-audit.yml') && config.workflows?.docsAudit?.triggerPaths) {
+    const pathLines = config.workflows.docsAudit.triggerPaths
+      .map(p => `      - '${p}'`)
+      .join('\n');
+    // Replace the default paths block between the "paths:" line and "permissions:"
+    content = content.replace(
+      /    paths:\n(?:      - '[^']*'\n)*(?:      #[^\n]*\n)*/,
+      `    paths:\n${pathLines}\n`
+    );
+  }
+
+  // Apply refactor-audit schedule
+  if (templatePath.endsWith('refactor-audit.yml') && config.workflows?.refactorAudit?.schedule) {
+    content = content.replace(
+      /cron: '[^']*'/,
+      `cron: '${config.workflows.refactorAudit.schedule}'`
+    );
+  }
+
+  // Apply refactor-audit labels
+  if (templatePath.endsWith('refactor-audit.yml') && config.workflows?.refactorAudit?.labels) {
+    const labelsStr = config.workflows.refactorAudit.labels.map(l => `'${l}'`).join(', ');
+    content = content.replace(
+      /labels: \[.*\]\s*$/m,
+      `labels: [${labelsStr}]`
+    );
+  }
+
+  // Apply docs-audit labels
+  if (templatePath.endsWith('docs-audit.yml') && config.integrations?.github?.issueLabels?.docsAudit) {
+    const labelsStr = config.integrations.github.issueLabels.docsAudit.map(l => `'${l}'`).join(', ');
+    content = content.replace(
+      /labels: \[.*\]\s*$/m,
+      `labels: [${labelsStr}]`
+    );
+  }
+
+  return content;
+}
+
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((res) => rl.question(q, res));
 
@@ -176,15 +221,19 @@ export default async function init({ flags }) {
     }
   }
 
-  // 3f. Copy GitHub workflows from templates
+  // 3f. Copy GitHub workflows from templates (with config substitution)
   const workflowsDir = join(TEMPLATES_DIR, 'workflows');
   const targetWorkflowsDir = resolve(projectRoot, '.github/workflows');
   if (existsSync(workflowsDir)) {
     const workflowFiles = readdirSync(workflowsDir).filter(f => f.endsWith('.yml'));
     for (const file of workflowFiles) {
+      // Skip disabled workflows
+      if (file === 'docs-audit.yml' && config.workflows?.docsAudit?.enabled === false) continue;
+      if (file === 'refactor-audit.yml' && config.workflows?.refactorAudit?.enabled === false) continue;
+
       filesToCreate.push({
         path: join(targetWorkflowsDir, file),
-        copyFrom: join(workflowsDir, file),
+        content: processWorkflowTemplate(join(workflowsDir, file), config),
         label: `.github/workflows/${file}`,
       });
     }
@@ -206,13 +255,26 @@ export default async function init({ flags }) {
   const standingInstructions = generateStandingInstructions(config);
 
   if (existsSync(agentConfigPath)) {
-    // Append to existing file
-    filesToCreate.push({
-      path: agentConfigPath,
-      content: null, // special: append mode
-      append: '\n\n' + standingInstructions,
-      label: `${config.agentConfigFile} (appended standing instructions)`,
-    });
+    const existingContent = readFileSync(agentConfigPath, 'utf8');
+    const MARKER_START = '## Documentation Maintenance — Standing Instructions';
+    const markerIndex = existingContent.indexOf(MARKER_START);
+
+    if (markerIndex !== -1) {
+      // Replace existing standing instructions block
+      filesToCreate.push({
+        path: agentConfigPath,
+        content: existingContent.slice(0, markerIndex).trimEnd() + '\n\n' + standingInstructions + '\n',
+        label: `${config.agentConfigFile} (replaced standing instructions)`,
+      });
+    } else {
+      // Append to existing file
+      filesToCreate.push({
+        path: agentConfigPath,
+        content: null,
+        append: '\n\n' + standingInstructions,
+        label: `${config.agentConfigFile} (appended standing instructions)`,
+      });
+    }
   } else {
     filesToCreate.push({
       path: agentConfigPath,

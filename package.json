@@ -1,5 +1,5 @@
 {
-  "name": "agent-guard",
+  "name": "@mossrussell/agent-guard",
   "version": "0.1.0",
   "description": "Self-healing documentation system for AI-assisted development. Prevents doc drift across commits, pushes, and weekly audits.",
   "keywords": [
@@ -16,7 +16,7 @@
   "author": "Russell Moss",
   "repository": {
     "type": "git",
-    "url": "https://github.com/savvywealth/agent-guard"
+    "url": "https://github.com/russellmoss/agent-guard"
   },
   "type": "module",
   "main": "src/index.js",
@@ -29,9 +29,7 @@
     "templates/"
   ],
   "scripts": {
-    "lint": "eslint src/ bin/ --ext .js",
-    "test": "node --test src/**/*.test.js",
-    "prepublishOnly": "npm run lint && npm run test"
+    "prepare": "husky"
   },
   "engines": {
     "node": ">=20.0.0"

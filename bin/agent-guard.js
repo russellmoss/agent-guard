@@ -59,15 +59,20 @@ if (!noConfigCommands.includes(command) && !existsSync(configPath)) {
   process.exit(1);
 }
 
+// Whitelist of valid commands (sanitize user input before dynamic import)
+const VALID_COMMANDS = ['init', 'detect', 'gen', 'check'];
+
+if (!VALID_COMMANDS.includes(command)) {
+  console.error(`\n  ✗ Unknown command: "${command}"`);
+  console.error(`  Available commands: ${VALID_COMMANDS.join(', ')}`);
+  console.error(`  Run "agent-guard --help" for usage.\n`);
+  process.exit(1);
+}
+
 // Dynamic import for the selected command
 try {
   const commandModule = await import(`../src/commands/${command}.js`);
   await commandModule.default({ configPath, flags: values });
 } catch (err) {
-  if (err.code === 'ERR_MODULE_NOT_FOUND') {
-    console.error(`\n  ✗ Unknown command: "${command}"`);
-    console.error(`  Run "agent-guard --help" for available commands.\n`);
-    process.exit(1);
-  }
   throw err;
 }
