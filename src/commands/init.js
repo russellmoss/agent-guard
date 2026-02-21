@@ -319,6 +319,13 @@ export default async function init({ flags }) {
     label: config.generatedDir + '.gitkeep',
   });
 
+  // 3d-ii. .agent-guard directory for audit log and signal files
+  filesToCreate.push({
+    path: resolve(projectRoot, '.agent-guard', '.gitkeep'),
+    content: '',
+    label: '.agent-guard/.gitkeep',
+  });
+
   // 3e. Copy scripts from templates
   const scriptsDir = join(TEMPLATES_DIR, 'scripts');
   const targetScriptsDir = resolve(projectRoot, 'scripts');
@@ -351,15 +358,18 @@ export default async function init({ flags }) {
     }
   }
 
-  // 3g. Copy Husky pre-commit hook
+  // 3g. Copy all husky hooks (auto-discovers any new hooks in templates/husky/)
   const huskyTemplateDir = join(TEMPLATES_DIR, 'husky');
   const targetHuskyDir = resolve(projectRoot, '.husky');
   if (existsSync(huskyTemplateDir)) {
-    filesToCreate.push({
-      path: join(targetHuskyDir, 'pre-commit'),
-      copyFrom: join(huskyTemplateDir, 'pre-commit'),
-      label: '.husky/pre-commit',
-    });
+    const hookFiles = readdirSync(huskyTemplateDir);
+    for (const hookFile of hookFiles) {
+      filesToCreate.push({
+        path: join(targetHuskyDir, hookFile),
+        copyFrom: join(huskyTemplateDir, hookFile),
+        label: `.husky/${hookFile}`,
+      });
+    }
   }
 
   // 3h. Standing instructions
