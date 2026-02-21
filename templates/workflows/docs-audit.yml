@@ -69,6 +69,10 @@ jobs:
             echo -e "$DRIFT_DETAILS" > /tmp/drift-details.txt
           fi
 
+      - name: Quality check on documentation
+        if: always()
+        run: node scripts/quality-check.cjs
+
       - name: Create issue for documentation drift
         if: steps.check-drift.outputs.drift_found == 'true'
         uses: actions/github-script@v7
