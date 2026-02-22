@@ -98,12 +98,23 @@ npm run prepare
 When you commit, the pre-commit hook automatically:
 
 1. **Runs inventory generators** — regenerates `docs/_generated/*.md` files and stages them
-2. **Updates narrative docs** — if Claude Code is installed, it updates `ARCHITECTURE.md` and `README.md` based on your changes
-3. **Falls back gracefully** — if Claude Code is not available, it prints a copy-paste prompt instead
+2. **Updates narrative docs** — uses your configured engine to update `ARCHITECTURE.md` and `README.md` based on your changes
+3. **Falls back gracefully** — if no engine is available, it prints a copy-paste prompt instead
 
 The hook **never blocks commits** — it always exits 0 so your workflow is never interrupted.
 
-### When Claude Code is available (auto-fix mode):
+### Engine Options
+
+| Engine | Speed | Cost | Requirements |
+|--------|-------|------|--------------|
+| **API Engine** (Recommended) | ~12 seconds | ~$0.13/commit | `ANTHROPIC_API_KEY` in `.env` |
+| **Claude Code Engine** | ~30-60 seconds | Free (uses your session) | Claude Code CLI installed |
+
+**API Engine** — Calls the Anthropic API directly. Fast, cross-platform, and reliable. Set `"engine": "api"` in config.
+
+**Claude Code Engine** — Spawns Claude Code as a subprocess. Free if you have an active Claude Code session, but slower and requires the CLI installed.
+
+### When auto-fix succeeds:
 
 ```
 ✓ Doc-relevant changes detected — docs also updated. Nice!
@@ -112,7 +123,7 @@ The hook **never blocks commits** — it always exits 0 so your workflow is neve
  4 files changed, 52 insertions(+)
 ```
 
-### When Claude Code is not available (prompt mode):
+### When no engine is available (prompt mode):
 
 ```
 ⚠️  Documentation may need updating
@@ -131,6 +142,31 @@ The following files were changed and documentation may need updating...
 
 ---
 
+## API Engine Setup
+
+To use the faster API engine:
+
+1. **Add your API key** to `.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+2. **Set engine to "api"** in `agent-docs.config.json`:
+   ```json
+   "autoFix": {
+     "narrative": {
+       "enabled": true,
+       "engine": "api"
+     }
+   }
+   ```
+
+3. **That's it** — next commit or `npx agent-guard sync` will use the API.
+
+**Cost estimate:** ~$0.13/commit, ~$0.29/sync, ~$12-15/month with active use. Zero new dependencies (uses Node 20+ native fetch).
+
+---
+
 ## Commands
 
 | Command | Description |
@@ -141,7 +177,7 @@ The following files were changed and documentation may need updating...
 | `agent-guard detect` | Auto-detect baselines (file counts, TODOs, etc.) and update config. |
 | `agent-guard gen` | Run all inventory generators (`gen:api-routes`, `gen:env`, `gen:models`). |
 | `agent-guard check` | Run the pre-commit documentation check manually. |
-| `agent-guard sync` | Full documentation pass: runs generators + Claude Code narrative updates. |
+| `agent-guard sync` | Full documentation pass: runs generators + AI narrative updates. |
 
 All commands support `-v, --verbose` for detailed output and `-c, --config <path>` to specify a custom config file.
 
@@ -161,7 +197,10 @@ agent-guard is configured via `agent-docs.config.json`:
     "generators": true,
     "narrative": {
       "enabled": true,
-      "engine": "claude-code",
+      "engine": "api",
+      "model": "claude-sonnet-4-20250514",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "maxTokens": 32000,
       "review": false,
       "narrativeTriggers": ["api-routes", "prisma", "env"],
       "additionalNarrativeTargets": ["README.md"]
@@ -184,10 +223,14 @@ agent-guard is configured via `agent-docs.config.json`:
 | `agentConfigFile` | Primary AI agent config file (`.cursorrules`, `CLAUDE.md`, etc.). |
 | `additionalAgentConfigs` | Extra agent config files to write standing instructions to. |
 | `autoFix.generators` | Auto-run inventory generators at commit time (default: `true`). |
-| `autoFix.narrative.enabled` | Enable Claude Code narrative updates (default: `true`). |
+| `autoFix.narrative.enabled` | Enable AI narrative updates (default: `true`). |
+| `autoFix.narrative.engine` | `"api"` (direct API) or `"claude-code"` (subprocess). Default: `"claude-code"`. |
+| `autoFix.narrative.model` | Anthropic model ID. Default: `"claude-sonnet-4-20250514"`. Only used with API engine. |
+| `autoFix.narrative.apiKeyEnv` | Env var name for API key. Default: `"ANTHROPIC_API_KEY"`. Only used with API engine. |
+| `autoFix.narrative.maxTokens` | Max response tokens. Default: `32000`. Only used with API engine. |
 | `autoFix.narrative.review` | Show diff and confirm before staging AI changes (default: `false`). |
 | `autoFix.narrative.narrativeTriggers` | Category IDs that trigger narrative updates. |
-| `autoFix.narrative.additionalNarrativeTargets` | Extra files for Claude Code to update beyond `architectureFile`. |
+| `autoFix.narrative.additionalNarrativeTargets` | Extra files for AI to update beyond `architectureFile`. |
 | `scanPaths` | Paths to scan for API routes, Prisma schema, env file, etc. |
 
 ---
@@ -211,7 +254,7 @@ docs/
 |-------|---------|--------|
 | **Standing Instructions** | AI agent session | Updates docs alongside code changes |
 | **Generated Inventories** | `npm run gen:all` or auto at commit | Regenerates markdown from source files |
-| **Pre-commit Hook** | `git commit` | Auto-runs generators + Claude Code narrative updates; falls back to prompt if unavailable |
+| **Pre-commit Hook** | `git commit` | Auto-runs generators + AI narrative updates; falls back to prompt if unavailable |
 | **CI/CD Audits** | Push / PR / Schedule | Creates issues if drift detected; quality-checks AI-generated docs |
 
 ---

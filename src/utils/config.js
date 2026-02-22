@@ -25,10 +25,15 @@ export const DEFAULT_CONFIG = {
     generators: true,           // Auto-run inventory generators at commit time
     narrative: {
       enabled: true,            // Attempt AI-powered narrative updates
-      engine: 'claude-code',    // Engine to use (only 'claude-code' supported)
+      engine: 'claude-code',    // Engine to use ('claude-code' or 'api')
       review: false,            // Show diff + confirm before staging AI changes
       narrativeTriggers: ['api-routes', 'prisma', 'env'],  // Category IDs that fire narrative updates
       additionalNarrativeTargets: ['README.md'],  // EXTRA files beyond architectureFile
+      // New API engine fields (only used when engine === 'api')
+      model: 'claude-sonnet-4-20250514',
+      apiKeyEnv: 'ANTHROPIC_API_KEY',
+      maxTokens: 32000,
+      timeout: 120000,
     },
   },
   scanPaths: {

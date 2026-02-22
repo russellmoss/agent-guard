@@ -92,9 +92,33 @@ export function generateConfigSchema() {
               },
               engine: {
                 type: 'string',
-                enum: ['claude-code'],
-                description: 'AI engine to use for narrative updates. Currently only claude-code is supported.',
+                enum: ['claude-code', 'api'],
+                description: 'AI engine for narrative updates. "claude-code" uses CLI subprocess, "api" calls Anthropic Messages API directly.',
                 default: 'claude-code',
+              },
+              model: {
+                type: 'string',
+                description: 'Anthropic model ID for API engine (ignored if engine is "claude-code").',
+                default: 'claude-sonnet-4-20250514',
+              },
+              apiKeyEnv: {
+                type: 'string',
+                description: 'Environment variable name containing the Anthropic API key.',
+                default: 'ANTHROPIC_API_KEY',
+              },
+              maxTokens: {
+                type: 'integer',
+                description: 'Maximum tokens for API response. Set higher for large ARCHITECTURE.md files.',
+                default: 32000,
+                minimum: 1024,
+                maximum: 128000,
+              },
+              timeout: {
+                type: 'integer',
+                description: 'API request timeout in milliseconds.',
+                default: 120000,
+                minimum: 10000,
+                maximum: 600000,
               },
               review: {
                 type: 'boolean',

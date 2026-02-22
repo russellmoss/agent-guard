@@ -21,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { loadConfig, PROJECT_ROOT } = require('./_config-reader.cjs');
-const { detectEngine, invokeClaudeCode } = require('./_claude-engine.cjs');
+const claudeEngine = require('./_claude-engine.cjs');
 const { printAutoFixSummary, printPromptFallback } = require('./_terminal-output.cjs');
 const { logEntry } = require('./_audit-log.cjs');
 
@@ -282,103 +282,152 @@ async function main() {
     }
   }
 
-  // Step 2: Narrative update via Claude Code
+  // Step 2: Narrative update via Claude Code or API
   const triggeredIds = Object.keys(matches);
   const narrativeTriggers = config.autoFix?.narrative?.narrativeTriggers || ['api-routes', 'prisma', 'env'];
   const hasNarrativeTrigger = triggeredIds.some(id => narrativeTriggers.includes(id));
+  let narrativeRan = false;
 
   if (hasNarrativeTrigger && config.autoFix?.narrative?.enabled !== false) {
-    const engine = detectEngine();
+    const engine = config.autoFix?.narrative?.engine || 'claude-code';
 
-    if (engine) {
-      engineUsed = engine;
-      const prompt = buildNarrativePrompt(matches, config);
-      const result = invokeClaudeCode(prompt, PROJECT_ROOT, (msg) => stderr(`  ${msg}\n`));
+    if (engine === 'api') {
+      // === NEW: Direct API engine ===
+      stderr('  Using Anthropic API engine...\n');
+      engineUsed = 'api';
 
-      if (result.success) {
-        // Compute narrative targets
-        const archFile = config.architectureFile || 'docs/ARCHITECTURE.md';
-        const targets = [
-          archFile,
-          ...(config.autoFix?.narrative?.additionalNarrativeTargets || ['README.md']),
-        ];
+      try {
+        const result = await claudeEngine.invokeApiEngine({
+          mode: 'narrative',
+          config,
+          projectRoot: PROJECT_ROOT,
+          matches,
+          onProgress: (msg) => stderr(`  ${msg}\n`),
+        });
 
-        // Review mode
-        if (config.autoFix?.narrative?.review === true) {
-          // Check if terminal is available
-          let canInteract = false;
-          try {
-            const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
-            const fd = fs.openSync(ttyPath, 'r');
-            fs.closeSync(fd);
-            canInteract = true;
-          } catch {
-            // No TTY available (CI, piped input) — auto-accept
+        if (result.success && result.files && result.files.length > 0) {
+          // Write updated files to disk
+          for (const f of result.files) {
+            const fullPath = path.join(PROJECT_ROOT, f.path);
+            fs.writeFileSync(fullPath, f.content, 'utf8');
+            if (verbose) stderr(`  Updated: ${f.path}\n`);
           }
 
-          if (canInteract) {
-            stderr('\n📋 Review AI doc changes:\n');
-            for (const target of targets) {
-              try {
-                const diff = execSync(`git diff -- ${target}`, {
-                  cwd: PROJECT_ROOT,
-                  encoding: 'utf8',
-                  stdio: ['pipe', 'pipe', 'pipe'],
-                });
-                if (diff.trim()) {
-                  stderr(`\n--- ${target} ---\n`);
-                  stderr(diff);
-                }
-              } catch {
-                // File may not exist or no changes
-              }
-            }
-
-            // Read from /dev/tty, not stdin (git hooks have stdin as /dev/null)
-            const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
-            const ttyFd = fs.openSync(ttyPath, 'r');
-            const ttyInput = fs.createReadStream(null, { fd: ttyFd });
-            const rl = readline.createInterface({ input: ttyInput, output: process.stderr });
-
-            const answer = await new Promise((resolve) => {
-              rl.question('  Stage these changes? (y/n): ', resolve);
-            });
-            rl.close();
-            ttyInput.destroy();
-
-            if (answer.toLowerCase() !== 'y') {
-              // Discard changes
-              for (const target of targets) {
-                try { execSync(`git checkout -- ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
-              }
-              stderr('  AI changes discarded.\n');
-              engineError = 'Changes rejected by review.';
-            }
-          }
-        }
-
-        // Stage narrative targets (unless rejected by review)
-        if (!engineError) {
-          for (const target of targets) {
-            try {
-              execSync(`git add ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
-              autoFixResults.push({ file: target, action: 'narrative updated by Claude Code' });
-            } catch {
-              // File may not exist
-            }
-          }
+          // Staging and review use existing logic below
+          narrativeRan = true;
           autoFixRan = true;
+        } else if (result.success && (!result.files || result.files.length === 0)) {
+          stderr('  API reports no documentation changes needed.\n');
+        } else {
+          engineError = result.error;
+          stderr(`  API engine failed: ${result.error}. Falling back to prompt mode.\n`);
+        }
+      } catch (err) {
+        engineError = err.message;
+        stderr(`  API engine error: ${err.message}. Falling back to prompt mode.\n`);
+      }
 
-          // Write signal file for prepare-commit-msg hook
-          const signalDir = path.join(PROJECT_ROOT, '.agent-guard');
-          if (!fs.existsSync(signalDir)) fs.mkdirSync(signalDir, { recursive: true });
-          fs.writeFileSync(path.join(signalDir, '.auto-fix-ran'), '', 'utf8');
+    } else {
+      // === EXISTING: Claude Code subprocess engine ===
+      const detected = claudeEngine.detectEngine();
+
+      if (detected) {
+        engineUsed = detected;
+        const prompt = buildNarrativePrompt(matches, config);
+        const result = claudeEngine.invokeClaudeCode(prompt, PROJECT_ROOT, (msg) => stderr(`  ${msg}\n`));
+
+        if (result.success) {
+          narrativeRan = true;
+          autoFixRan = true;
+        } else {
+          engineError = result.error;
         }
       } else {
-        engineError = result.error;
+        engineError = 'Claude Code not found on PATH. Install: npm i -g @anthropic-ai/claude-code';
       }
-    } else {
-      engineError = 'Claude Code not found on PATH. Install: npm i -g @anthropic-ai/claude-code';
+    }
+
+    // Shared logic for narrative updates (both engines)
+    if (narrativeRan) {
+      // Compute narrative targets
+      const archFile = config.architectureFile || 'docs/ARCHITECTURE.md';
+      const targets = [
+        archFile,
+        ...(config.autoFix?.narrative?.additionalNarrativeTargets || ['README.md']),
+      ];
+
+      // Review mode
+      if (config.autoFix?.narrative?.review === true) {
+        // Check if terminal is available
+        let canInteract = false;
+        try {
+          const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
+          const fd = fs.openSync(ttyPath, 'r');
+          fs.closeSync(fd);
+          canInteract = true;
+        } catch {
+          // No TTY available (CI, piped input) — auto-accept
+        }
+
+        if (canInteract) {
+          stderr('\n  Review AI doc changes:\n');
+          for (const target of targets) {
+            try {
+              const diff = execSync(`git diff -- ${target}`, {
+                cwd: PROJECT_ROOT,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe'],
+              });
+              if (diff.trim()) {
+                stderr(`\n--- ${target} ---\n`);
+                stderr(diff);
+              }
+            } catch {
+              // File may not exist or no changes
+            }
+          }
+
+          // Read from /dev/tty, not stdin (git hooks have stdin as /dev/null)
+          const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
+          const ttyFd = fs.openSync(ttyPath, 'r');
+          const ttyInput = fs.createReadStream(null, { fd: ttyFd });
+          const rl = readline.createInterface({ input: ttyInput, output: process.stderr });
+
+          const answer = await new Promise((resolve) => {
+            rl.question('  Stage these changes? (y/n): ', resolve);
+          });
+          rl.close();
+          ttyInput.destroy();
+
+          if (answer.toLowerCase() !== 'y') {
+            // Discard changes
+            for (const target of targets) {
+              try { execSync(`git checkout -- ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
+            }
+            stderr('  AI changes discarded.\n');
+            engineError = 'Changes rejected by review.';
+            narrativeRan = false;
+            autoFixRan = false;
+          }
+        }
+      }
+
+      // Stage narrative targets (unless rejected by review)
+      if (!engineError) {
+        for (const target of targets) {
+          try {
+            execSync(`git add ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+            autoFixResults.push({ file: target, action: `narrative updated by ${engineUsed}` });
+          } catch {
+            // File may not exist
+          }
+        }
+
+        // Write signal file for prepare-commit-msg hook
+        const signalDir = path.join(PROJECT_ROOT, '.agent-guard');
+        if (!fs.existsSync(signalDir)) fs.mkdirSync(signalDir, { recursive: true });
+        fs.writeFileSync(path.join(signalDir, '.auto-fix-ran'), '', 'utf8');
+      }
     }
   }
 

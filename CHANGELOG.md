@@ -2,6 +2,21 @@
 
 All notable changes to `@mossrussell/agent-guard` will be documented in this file.
 
+## [0.4.0] - 2026-02-21
+
+### Added
+- Direct Anthropic API engine (`engine: "api"`) for narrative documentation updates
+- Zero new dependencies — uses Node 20+ native `fetch()`
+- ~12 second update cycle vs 2+ minute subprocess timeout
+- Cross-platform reliability (fixes Windows subprocess timeout issue)
+- Configurable model, API key env var, max tokens, and timeout
+- Automatic `.env` file parsing for API key resolution
+- Response validation with `<updated-file>` XML markers
+- Graceful fallback to manual prompt on API failure
+
+### Fixed
+- Windows ETIMEDOUT when spawning Claude Code subprocess (the API engine bypasses this entirely)
+
 ## [0.3.0] — 2026-02-21
 
 ### Added
