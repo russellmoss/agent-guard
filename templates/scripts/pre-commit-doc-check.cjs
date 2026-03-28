@@ -26,7 +26,29 @@ const { printAutoFixSummary, printPromptFallback } = require('./_terminal-output
 const { logEntry } = require('./_audit-log.cjs');
 
 const verbose = process.argv.includes('--verbose');
-const config = loadConfig();
+
+// Outer-scope — set inside main(), read by .catch() handler
+let effectiveBlockingMode = false;
+
+// Deferred config/categories — loaded on first use (not at require time for testability)
+let config = null;
+let CATEGORIES = null;
+
+function ensureConfig() {
+  if (!config) {
+    config = loadConfig();
+    CATEGORIES = (config.categories || []).map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      emoji: cat.emoji || '📦',
+      test: buildTestFunction(cat),
+      docTarget: cat.docTarget
+        ? `${cat.docTarget} in ${config.architectureFile || 'docs/ARCHITECTURE.md'}`
+        : `Relevant section in ${config.architectureFile || 'docs/ARCHITECTURE.md'}`,
+      genCommand: cat.genCommand || null,
+    }));
+  }
+}
 
 function stderr(msg) {
   process.stderr.write(msg);
@@ -46,17 +68,6 @@ function buildTestFunction(cat) {
       return (f) => f === cat.filePattern;
   }
 }
-
-const CATEGORIES = (config.categories || []).map(cat => ({
-  id: cat.id,
-  name: cat.name,
-  emoji: cat.emoji || '📦',
-  test: buildTestFunction(cat),
-  docTarget: cat.docTarget
-    ? `${cat.docTarget} in ${config.architectureFile || 'docs/ARCHITECTURE.md'}`
-    : `Relevant section in ${config.architectureFile || 'docs/ARCHITECTURE.md'}`,
-  genCommand: cat.genCommand || null,
-}));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -199,6 +210,28 @@ function buildNarrativePrompt(matches, cfg) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  ensureConfig();
+
+  // ── Hook config (CJS reader has no defaults — use inline fallbacks) ──
+  const rawHookMode = config.autoFix?.hook?.mode || 'advisory';
+  const hookMode = ['advisory', 'blocking'].includes(rawHookMode) ? rawHookMode : 'advisory';
+  if (rawHookMode !== hookMode && verbose) {
+    process.stderr.write(`\nagent-guard: unknown hook mode "${rawHookMode}", falling back to "advisory"\n`);
+  }
+  const blockingMode = hookMode === 'blocking';
+  const checkOnly = config.autoFix?.hook?.checkOnly === true || process.argv.includes('--check-only');
+  const skipIfClaudeRunning = config.autoFix?.hook?.skipIfClaudeRunning !== false; // default true
+
+  // Auto-downgrade to advisory during rebase/merge operations
+  const gitDir = path.join(PROJECT_ROOT, '.git');
+  const isRebaseOrMerge = fs.existsSync(path.join(gitDir, 'rebase-merge'))
+    || fs.existsSync(path.join(gitDir, 'rebase-apply'))
+    || fs.existsSync(path.join(gitDir, 'MERGE_HEAD'));
+  effectiveBlockingMode = blockingMode && !isRebaseOrMerge;
+  if (blockingMode && isRebaseOrMerge && verbose) {
+    process.stderr.write('\nagent-guard: rebase/merge detected, downgrading to advisory mode\n');
+  }
+
   const stagedFiles = getStagedFiles();
 
   if (verbose) {
@@ -211,7 +244,7 @@ async function main() {
 
   if (stagedFiles.length === 0) {
     if (verbose) stderr('No staged files. Nothing to check.\n');
-    return;
+    return 0;
   }
 
   const { matches, unmatched } = categorize(stagedFiles);
@@ -236,13 +269,53 @@ async function main() {
   // No doc-relevant changes — silent pass
   if (!hasDocRelevant) {
     if (verbose) stderr('\nNo doc-relevant changes detected. ✓\n');
-    return;
+    return 0;
   }
 
   // Doc-relevant changes WITH doc updates — positive note
   if (docFilesStaged) {
     stderr('\n✓ Doc-relevant changes detected — docs also updated. Nice!\n\n');
-    return;
+    return 0;
+  }
+
+  // Check-only mode: report staleness, skip all AI/generator work
+  if (checkOnly) {
+    if (hasDocRelevant) {
+      const { printBlockedMessage } = require('./_terminal-output.cjs');
+      printBlockedMessage(matches, 'check-only mode detected stale documentation');
+      process.stderr.write('To auto-fix: npx agent-guard sync\n');
+      logEntry(PROJECT_ROOT, {
+        mode: 'check-only',
+        result: 'stale',
+        categories: Object.keys(matches)
+      });
+      return effectiveBlockingMode ? 1 : 0;
+    }
+    return 0; // docs are up to date
+  }
+
+  // Self-invocation guard: skip ALL AI engines when Claude Code is committing
+  // DECISION D3/D5: When Claude Code is the committer, it is responsible for updating
+  // docs itself. We skip all AI (both subprocess and API) to avoid self-invocation
+  // deadlock and surprise API costs. If docs are stale, exit 1 to tell Claude Code
+  // to update docs before retrying.
+  const { isClaudeCodeRunning } = require('./_claude-engine.cjs');
+  const insideClaudeCode = skipIfClaudeRunning && isClaudeCodeRunning();
+
+  if (insideClaudeCode) {
+    if (hasDocRelevant && !docFilesStaged) {
+      // Docs are stale and Claude Code is committing — block and instruct
+      const { printBlockedMessage } = require('./_terminal-output.cjs');
+      printBlockedMessage(matches, 'Claude Code is committing but documentation is stale');
+      logEntry(PROJECT_ROOT, {
+        mode: 'skipped-self-invocation',
+        result: 'blocked',
+        categories: Object.keys(matches)
+      });
+      return 1; // Always exit 1 — Claude Code must update docs itself
+    }
+    // Docs are current — let the commit through silently
+    return 0;
   }
 
   // ── Doc-relevant changes WITHOUT doc updates — auto-fix mode ──
@@ -252,8 +325,27 @@ async function main() {
   let engineError = null;
   let autoFixRan = false;
 
-  // Step 1: Auto-run generators
-  if (config.autoFix?.generators !== false) {
+  // Safety: refuse auto-fix if doc targets have unstaged edits
+  const narrativeTargets = [
+    config.architectureFile || 'docs/ARCHITECTURE.md',
+    ...(config.autoFix?.narrative?.additionalNarrativeTargets || ['README.md'])
+  ];
+  let dirtyTargets = [];
+  try {
+    const unstaged = execSync('git diff --name-only', { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+    dirtyTargets = narrativeTargets.filter(t => unstaged.includes(t));
+  } catch { /* ignore */ }
+
+  if (dirtyTargets.length > 0) {
+    if (verbose) {
+      process.stderr.write(`\nagent-guard: skipping auto-fix — doc files have unstaged edits: ${dirtyTargets.join(', ')}\n`);
+    }
+    engineError = `Skipped auto-fix: ${dirtyTargets.join(', ')} have unstaged changes that would be overwritten`;
+    // Fall through to output/exit — blocking mode will exit 1
+  }
+
+  // Step 1: Auto-run generators (skip if dirty-target error already set)
+  if (!engineError && config.autoFix?.generators !== false) {
     const genCommands = [];
     for (const cat of CATEGORIES) {
       if (matches[cat.id] && cat.genCommand && !genCommands.includes(cat.genCommand)) {
@@ -275,7 +367,7 @@ async function main() {
     if (autoFixRan) {
       try {
         const genDir = config.generatedDir || 'docs/_generated/';
-        execSync(`git add ${genDir}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+        execSync(`git add "${genDir}"`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
       } catch {
         // Non-fatal — generated files may not have changed
       }
@@ -288,7 +380,7 @@ async function main() {
   const hasNarrativeTrigger = triggeredIds.some(id => narrativeTriggers.includes(id));
   let narrativeRan = false;
 
-  if (hasNarrativeTrigger && config.autoFix?.narrative?.enabled !== false) {
+  if (!engineError && hasNarrativeTrigger && config.autoFix?.narrative?.enabled !== false) {
     const engine = config.autoFix?.narrative?.engine || 'claude-code';
 
     if (engine === 'api') {
@@ -360,20 +452,25 @@ async function main() {
       if (config.autoFix?.narrative?.review === true) {
         // Check if terminal is available
         let canInteract = false;
-        try {
-          const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
-          const fd = fs.openSync(ttyPath, 'r');
-          fs.closeSync(fd);
-          canInteract = true;
-        } catch {
-          // No TTY available (CI, piped input) — auto-accept
+        // Skip interactive TTY access in CI, headless environments, or non-TTY contexts
+        if (process.env.CI || !process.stderr.isTTY) {
+          canInteract = false;
+        } else {
+          try {
+            const ttyPath = process.platform === 'win32' ? '//./CON' : '/dev/tty';
+            const fd = fs.openSync(ttyPath, 'r');
+            fs.closeSync(fd);
+            canInteract = true;
+          } catch {
+            canInteract = false;
+          }
         }
 
         if (canInteract) {
           stderr('\n  Review AI doc changes:\n');
           for (const target of targets) {
             try {
-              const diff = execSync(`git diff -- ${target}`, {
+              const diff = execSync(`git diff -- "${target}"`, {
                 cwd: PROJECT_ROOT,
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'pipe'],
@@ -388,7 +485,7 @@ async function main() {
           }
 
           // Read from /dev/tty, not stdin (git hooks have stdin as /dev/null)
-          const ttyPath = process.platform === 'win32' ? 'CON' : '/dev/tty';
+          const ttyPath = process.platform === 'win32' ? '//./CON' : '/dev/tty';
           const ttyFd = fs.openSync(ttyPath, 'r');
           const ttyInput = fs.createReadStream(null, { fd: ttyFd });
           const rl = readline.createInterface({ input: ttyInput, output: process.stderr });
@@ -402,7 +499,7 @@ async function main() {
           if (answer.toLowerCase() !== 'y') {
             // Discard changes
             for (const target of targets) {
-              try { execSync(`git checkout -- ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
+              try { execSync(`git checkout -- "${target}"`, { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
             }
             stderr('  AI changes discarded.\n');
             engineError = 'Changes rejected by review.';
@@ -416,7 +513,7 @@ async function main() {
       if (!engineError) {
         for (const target of targets) {
           try {
-            execSync(`git add ${target}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+            execSync(`git add "${target}"`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
             autoFixResults.push({ file: target, action: `narrative updated by ${engineUsed}` });
           } catch {
             // File may not exist
@@ -460,15 +557,15 @@ async function main() {
     }
 
     // Gen commands to run
-    const genCommands = [];
+    const genCmds = [];
     for (const cat of CATEGORIES) {
-      if (matches[cat.id] && cat.genCommand && !genCommands.includes(cat.genCommand)) {
-        genCommands.push(cat.genCommand);
+      if (matches[cat.id] && cat.genCommand && !genCmds.includes(cat.genCommand)) {
+        genCmds.push(cat.genCommand);
       }
     }
-    if (genCommands.length > 0) {
+    if (genCmds.length > 0) {
       stderr('\nRun these inventory commands:\n');
-      for (const cmd of genCommands) {
+      for (const cmd of genCmds) {
         stderr(`  ${cmd}\n`);
       }
     }
@@ -483,12 +580,67 @@ async function main() {
     generatorResults: autoFixResults.filter(r => r.action === 'regenerated'),
     narrativeResults: autoFixResults.filter(r => r.action.includes('narrative')),
   });
+
+  // Step 5: Determine exit code
+  if (!effectiveBlockingMode) {
+    return 0; // Advisory mode — never block
+  }
+
+  if (!engineError) {
+    return 0; // Auto-fix succeeded
+  }
+
+  // DECISION D1: Lenient degrade on engine failure
+  // If engine failed because it's unavailable (API down, timeout, auth error),
+  // degrade to advisory — don't punish developers for infrastructure issues.
+  // Write a .docs-stale marker so the next session can detect and fix it.
+  const isEngineFault = engineError.includes('timeout') ||
+    engineError.includes('401') || engineError.includes('429') ||
+    engineError.includes('fetch') || engineError.includes('ENOTFOUND') ||
+    engineError.includes('not found') || engineError.includes('not available');
+
+  if (isEngineFault) {
+    // Engine unavailable — degrade to advisory, write stale marker
+    process.stderr.write(
+      `\n⚠️  agent-guard: engine unavailable, degrading to advisory mode\n` +
+      `Reason: ${engineError}\n` +
+      `A .agent-guard/.docs-stale marker has been written. Run "npx agent-guard sync" to fix.\n\n`
+    );
+    try {
+      const staleDir = path.join(PROJECT_ROOT, '.agent-guard');
+      if (!fs.existsSync(staleDir)) fs.mkdirSync(staleDir, { recursive: true });
+      fs.writeFileSync(path.join(staleDir, '.docs-stale'), JSON.stringify({
+        timestamp: new Date().toISOString(),
+        reason: engineError,
+        categories: Object.keys(matches)
+      }), 'utf8');
+    } catch { /* best effort */ }
+    return 0; // Degrade to advisory — not the developer's fault
+  }
+
+  // Auto-fix failed for a fixable reason (dirty files, config issue, etc.) — block
+  const { printBlockedMessage: printBlocked } = require('./_terminal-output.cjs');
+  printBlocked(matches, engineError);
+  return 1;
 }
 
-main().catch((e) => {
-  if (verbose) {
-    process.stderr.write(`[pre-commit-doc-check] Unexpected error: ${e.message}\n`);
+if (require.main === module) {
+  main().then(code => {
+    process.exitCode = code ?? 0;
+  }).catch((e) => {
+    if (verbose) {
+      process.stderr.write(`[pre-commit-doc-check] Unexpected error: ${e.message}\n`);
+    }
+    process.exitCode = effectiveBlockingMode ? 1 : 0;
+  }).finally(() => {
+    process.exit(process.exitCode ?? 0);
+  });
+}
+
+module.exports = {
+  // Exported for testing only
+  _test: {
+    getStagedFiles,
+    categorize,
   }
-}).finally(() => {
-  process.exit(0);
-});
+};

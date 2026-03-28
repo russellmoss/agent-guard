@@ -17,7 +17,7 @@
  * Also adds npm scripts to package.json and installs husky.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync, readdirSync, chmodSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
@@ -463,6 +463,9 @@ export default async function init({ flags }) {
         continue;
       }
       copyFileSync(f.copyFrom, f.path);
+      if (process.platform !== 'win32' && f.label.startsWith('.husky/')) {
+        chmodSync(f.path, 0o755);
+      }
       console.log(`  ${existed ? 'Updated' : 'Created'}: ${f.label}`);
     } else {
       // Config is always overwritten; other generated files respect --force

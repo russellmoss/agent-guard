@@ -35,6 +35,11 @@ export const DEFAULT_CONFIG = {
       maxTokens: 32000,
       timeout: 120000,
     },
+    hook: {
+      mode: 'advisory',        // 'advisory' (exit 0 always) or 'blocking' (exit 1 when stale)
+      checkOnly: false,         // skip AI calls, just detect staleness
+      skipIfClaudeRunning: true // skip ALL AI engines when Claude Code is the caller
+    },
   },
   scanPaths: {
     apiRoutes: 'src/app/api/',

@@ -26,6 +26,7 @@ const { values, positionals } = parseArgs({
     prisma: { type: 'boolean', default: false },
     'agent-config': { type: 'string', default: '' },
     force: { type: 'boolean', default: false },
+    'check-only': { type: 'boolean', default: false },
   },
 });
 

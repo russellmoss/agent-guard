@@ -432,6 +432,19 @@ async function invokeApiEngine({ mode, config, projectRoot, matches, onProgress 
   }
 }
 
+/**
+ * Detect if this process was spawned by Claude Code.
+ * Claude Code sets CLAUDECODE=1 and CLAUDE_CODE_ENTRYPOINT in child processes.
+ * Pure env check — zero cost, no subprocess, cross-platform.
+ *
+ * When true, the hook skips ALL AI engines (both subprocess and API) to prevent
+ * self-invocation deadlock and avoid surprise API costs. Claude Code is responsible
+ * for updating docs itself before retrying the commit.
+ */
+function isClaudeCodeRunning() {
+  return !!(process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT);
+}
+
 module.exports = {
   detectEngine,
   sanitizePrompt,
@@ -440,4 +453,5 @@ module.exports = {
   invokeApiEngine,
   buildApiPrompt,
   parseApiResponse,
+  isClaudeCodeRunning,
 };

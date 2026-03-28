@@ -55,6 +55,10 @@ export function generateStandingInstructions(config) {
   lines.push('');
   lines.push('These are committed to the repo. Always regenerate after changing routes, models, or env vars.');
   lines.push('');
+  lines.push('### Pre-Commit Hook Behavior');
+  lines.push('- If the pre-commit hook is in **blocking mode** (`autoFix.hook.mode: "blocking"`), you MUST update documentation BEFORE committing. The hook will exit 1 and reject the commit if docs are stale. Run generators and update narrative docs first, then commit.');
+  lines.push('- When you (an AI agent) trigger a commit, the hook detects this and skips all AI engines to prevent self-invocation. If docs are stale, the commit will be rejected with exit 1. You must run `npx agent-guard sync` or update the docs manually, then retry the commit.');
+  lines.push('');
   lines.push('### What NOT to Do');
   lines.push(`- Do NOT edit files in \`${config.generatedDir || 'docs/_generated/'}\` manually — they are overwritten by scripts`);
   lines.push('- Do NOT skip documentation updates because "it\'s a small change" — small changes accumulate into drift');

@@ -177,6 +177,7 @@ To use the faster API engine:
 | `agent-guard detect` | Auto-detect baselines (file counts, TODOs, etc.) and update config. |
 | `agent-guard gen` | Run all inventory generators (`gen:api-routes`, `gen:env`, `gen:models`). |
 | `agent-guard check` | Run the pre-commit documentation check manually. |
+| `agent-guard check --check-only` | Staleness detection only — no AI calls. |
 | `agent-guard sync` | Full documentation pass: runs generators + AI narrative updates. |
 
 All commands support `-v, --verbose` for detailed output and `-c, --config <path>` to specify a custom config file.
@@ -231,6 +232,9 @@ agent-guard is configured via `agent-docs.config.json`:
 | `autoFix.narrative.review` | Show diff and confirm before staging AI changes (default: `false`). |
 | `autoFix.narrative.narrativeTriggers` | Category IDs that trigger narrative updates. |
 | `autoFix.narrative.additionalNarrativeTargets` | Extra files for AI to update beyond `architectureFile`. |
+| `autoFix.hook.mode` | `"advisory"` (default, never block commits) or `"blocking"` (exit 1 when docs stale). |
+| `autoFix.hook.checkOnly` | Skip AI calls, only detect staleness (default: `false`). |
+| `autoFix.hook.skipIfClaudeRunning` | Skip all AI engines when Claude Code is committing (default: `true`). Prevents deadlock and surprise costs. |
 | `scanPaths` | Paths to scan for API routes, Prisma schema, env file, etc. |
 
 ---

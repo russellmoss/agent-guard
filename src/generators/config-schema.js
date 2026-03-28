@@ -139,6 +139,28 @@ export function generateConfigSchema() {
               },
             },
           },
+          hook: {
+            type: 'object',
+            description: 'Pre-commit hook behavior settings',
+            properties: {
+              mode: {
+                type: 'string',
+                enum: ['advisory', 'blocking'],
+                default: 'advisory',
+                description: 'advisory = always exit 0 (never block commits), blocking = exit 1 when docs are stale',
+              },
+              checkOnly: {
+                type: 'boolean',
+                default: false,
+                description: 'Skip all AI calls; only detect staleness and report/exit',
+              },
+              skipIfClaudeRunning: {
+                type: 'boolean',
+                default: true,
+                description: 'Skip all AI engines when Claude Code is detected as the committer (prevents self-invocation and surprise API costs)',
+              },
+            },
+          },
         },
       },
       scanPaths: {

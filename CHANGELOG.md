@@ -2,6 +2,24 @@
 
 All notable changes to `@mossrussell/agent-guard` will be documented in this file.
 
+## [0.5.0] — 2026-03-27
+
+### Added
+- **Blocking hook mode**: `autoFix.hook.mode: "blocking"` exits 1 when docs are stale, preventing commits until documentation is updated
+- **Check-only mode**: `autoFix.hook.checkOnly` and `--check-only` flag skip AI calls, only detecting staleness
+- **Self-invocation guard**: Hook detects when Claude Code is the committer and skips all AI engines to prevent deadlock and surprise costs
+- **Engine failure degradation**: In blocking mode, engine failures (API down, timeout) degrade to advisory instead of blocking commits; writes `.docs-stale` marker
+- **Machine-readable output**: `AGENT_GUARD_STALE: <files>` on stdout when docs are stale (for Claude Code hook handlers)
+
+### Fixed
+- Windows TTY path: `CON` → `//./CON` for correct device access in review mode
+- Unquoted paths in `git add`/`git checkout` commands that broke with spaces in paths
+- `src/commands/check.js` now propagates hook exit codes instead of always exiting 0
+
+### Changed
+- Standing instructions now tell AI agents to update docs before committing when blocking mode is enabled
+- Pre-commit hook exports pure functions for testability (`require.main` guard)
+
 ## [0.4.0] - 2026-02-21
 
 ### Added
