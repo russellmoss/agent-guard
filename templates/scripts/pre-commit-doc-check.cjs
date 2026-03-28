@@ -273,7 +273,15 @@ async function main() {
   }
 
   // Doc-relevant changes WITH doc updates — positive note
-  if (docFilesStaged) {
+  // Check that narrative targets specifically were staged, not just any doc file.
+  // Without this, editing docs/_generated/foo.md would bypass the staleness check.
+  const archFile = (config.architectureFile || 'docs/ARCHITECTURE.md').replace(/\\/g, '/');
+  const narrativeDocTargets = [
+    archFile,
+    ...(config.autoFix?.narrative?.additionalNarrativeTargets || ['README.md']),
+  ].map(t => t.replace(/\\/g, '/'));
+  const narrativeTargetsStaged = narrativeDocTargets.some(t => stagedFiles.includes(t));
+  if (narrativeTargetsStaged) {
     stderr('\n✓ Doc-relevant changes detected — docs also updated. Nice!\n\n');
     return 0;
   }
@@ -303,7 +311,7 @@ async function main() {
   const insideClaudeCode = skipIfClaudeRunning && isClaudeCodeRunning();
 
   if (insideClaudeCode) {
-    if (hasDocRelevant && !docFilesStaged) {
+    if (hasDocRelevant && !narrativeTargetsStaged) {
       // Docs are stale and Claude Code is committing — block and instruct
       const { printBlockedMessage } = require('./_terminal-output.cjs');
       printBlockedMessage(matches, 'Claude Code is committing but documentation is stale');
